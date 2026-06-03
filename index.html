@@ -264,7 +264,7 @@ create table if not exists history (
 <script src="logo.js"></script>
 <script>
 document.getElementById('logo-img').src = LOGO_B64;
-var tasks=[],history=[],nextId=1,pendingDoneId=null,editingId=null,selOutcomeVal='Pass';
+var tasks=[],taskHistory=[],nextId=1,pendingDoneId=null,editingId=null,selOutcomeVal='Pass';
 var TODAY=new Date();TODAY.setHours(0,0,0,0);
 var WARN=14,SB_URL_KEY='campcare_sb_url',SB_KEY_KEY='campcare_sb_key',TASKS_KEY='campcare_tasks_v2',HIST_KEY='campcare_hist_v2';
 function getSbConfig(){return{url:localStorage.getItem(SB_URL_KEY)||'',key:localStorage.getItem(SB_KEY_KEY)||''};}
@@ -281,20 +281,20 @@ async function sbFetch(path,method,body){
 async function loadAll(){
   var lt=JSON.parse(localStorage.getItem(TASKS_KEY)||'[]');
   var lh=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');
-  tasks=lt;history=lh;recalcNextId();renderAll();
+  tasks=lt;taskHistory=lh;recalcNextId();renderAll();
   if(isConnected()){
     setTimeout(async function(){
       try{
         var r=await Promise.all([sbFetch('tasks?order=due.asc&select=*'),sbFetch('history?order=completed_on.desc&select=*')]);
         var st=r[0],sh=r[1];
         if(st&&st.length>0){tasks=st.map(function(r){return{id:String(r.id),name:r.name,cat:r.cat,group:r.grp,freq:+r.freq,due:r.due,notes:r.notes||'',docUrl:r.doc_url||''};});localStorage.setItem(TASKS_KEY,JSON.stringify(tasks));recalcNextId();}
-        if(sh&&sh.length>0){history=sh.map(function(r){return{name:r.name,cat:r.cat,group:r.grp,completedOn:r.completed_on,wasDue:r.was_due,outcome:r.outcome||'Pass',completionNotes:r.completion_notes||''};});localStorage.setItem(HIST_KEY,JSON.stringify(history));}
+        if(sh&&sh.length>0){taskHistory=sh.map(function(r){return{name:r.name,cat:r.cat,group:r.grp,completedOn:r.completed_on,wasDue:r.was_due,outcome:r.outcome||'Pass',completionNotes:r.completion_notes||''};});localStorage.setItem(HIST_KEY,JSON.stringify(taskHistory));}
         renderAll();toast('Synced \u2713');
       }catch(e){console.warn('Supabase sync failed:',e);}
     },150);
   }
 }
-function saveLocal(){localStorage.setItem(TASKS_KEY,JSON.stringify(tasks));localStorage.setItem(HIST_KEY,JSON.stringify(history));}
+function saveLocal(){localStorage.setItem(TASKS_KEY,JSON.stringify(tasks));localStorage.setItem(HIST_KEY,JSON.stringify(taskHistory));}
 async function saveTaskToSb(t){if(!isConnected())return;try{await sbFetch('tasks?on_conflict=id','POST',{id:String(t.id),name:t.name,cat:t.cat,grp:t.group||'',freq:t.freq,due:t.due,notes:t.notes||'',doc_url:t.docUrl||''});}catch(e){console.warn(e);}}
 async function deleteTaskFromSb(id){if(!isConnected())return;try{await sbFetch('tasks?id=eq.'+id,'DELETE');}catch(e){console.warn(e);}}
 async function saveHistToSb(e){if(!isConnected())return;try{await sbFetch('history','POST',{name:e.name,cat:e.cat,grp:e.group||'',completed_on:e.completedOn,was_due:e.wasDue,outcome:e.outcome||'Pass',completion_notes:e.completionNotes||''});}catch(ex){console.warn(ex);}}
@@ -342,7 +342,7 @@ function renderTasks(){
 }
 function renderHistory(){
   var from=document.getElementById('h-from').value,to=document.getElementById('h-to').value,cat=document.getElementById('h-cat').value;
-  var list=history.filter(function(h){if(cat&&h.cat!==cat)return false;if(from&&h.completedOn<from)return false;if(to&&h.completedOn>to)return false;return true;}).sort(function(a,b){return b.completedOn.localeCompare(a.completedOn);});
+  var list=taskHistory.filter(function(h){if(cat&&h.cat!==cat)return false;if(from&&h.completedOn<from)return false;if(to&&h.completedOn>to)return false;return true;}).sort(function(a,b){return b.completedOn.localeCompare(a.completedOn);});
   if(!list.length){document.getElementById('history-body').innerHTML='<div class="empty-state">No completed tasks yet &mdash; mark tasks done to build your compliance record</div>';return;}
   var oc=function(o){return o==='Pass'?'ok':o==='Fail'?'overdue':'done';};
   document.getElementById('history-body').innerHTML='<div class="hist-table"><div class="h-head"><span>Task</span><span>Group</span><span>Completed</span><span>Was due</span><span>Outcome</span><span>Notes</span></div>'+list.map(function(h){return'<div class="h-row"><span><div style="font-weight:600;font-size:13px">'+h.name+'</div></span><span><span class="badge '+grpClass(h.group||h.cat||'')+'">'+( h.group||h.cat||'&mdash;')+'</span></span><span>'+fmtDate(h.completedOn)+'</span><span style="color:var(--text2)">'+fmtDate(h.wasDue)+'</span><span><span class="badge '+oc(h.outcome||'Pass')+'">'+( h.outcome||'Pass')+'</span></span><span style="font-size:12px;color:var(--text2);line-height:1.4">'+( h.completionNotes||'&mdash;')+'</span></div>';}).join('')+'</div>';
@@ -357,7 +357,7 @@ async function confirmDone(){
   var t=tasks.find(function(x){return x.id==pendingDoneId;});if(!t){closeDone();return;}
   var entry={name:t.name,cat:t.cat,group:t.group||'',completedOn:todayStr(),wasDue:t.due,outcome:selOutcomeVal,completionNotes:document.getElementById('m-notes').value.trim()};
   if(t.freq===0){tasks=tasks.filter(function(x){return x.id!==pendingDoneId;});}else{var d=new Date(t.due+'T00:00:00');d.setDate(d.getDate()+t.freq);t.due=d.toISOString().slice(0,10);}
-  history.unshift(entry);saveLocal();closeDone();renderAll();toast('Task completed \u2713');
+  taskHistory.unshift(entry);saveLocal();closeDone();renderAll();toast('Task completed \u2713');
   if(isConnected()){try{await Promise.all([t.freq===0?deleteTaskFromSb(pendingDoneId):saveTaskToSb(t),saveHistToSb(entry)]);}catch(e){console.warn(e);}}
 }
 function openEdit(id){var t=tasks.find(function(x){return x.id==id;});if(!t)return;editingId=id;document.getElementById('e-name').value=t.name||'';document.getElementById('e-cat').value=t.cat||'Maintenance';document.getElementById('e-grp').value=t.group||'';document.getElementById('e-freq').value=String(t.freq);document.getElementById('e-due').value=t.due||'';document.getElementById('e-notes').value=t.notes||'';document.getElementById('e-doc').value=t.docUrl||'';document.getElementById('edit-modal').classList.add('open');}
@@ -370,8 +370,8 @@ function populateSettings(){var c=getSbConfig();document.getElementById('sb-url'
 function saveSupabaseConfig(){var url=document.getElementById('sb-url').value.trim().replace(/\/$/,''),key=document.getElementById('sb-key').value.trim();if(!url||!key){alert('Please enter both the project URL and anon key.');return;}localStorage.setItem(SB_URL_KEY,url);localStorage.setItem(SB_KEY_KEY,key);toast('Supabase connected \u2014 syncing\u2026');populateSettings();loadAll();}
 function clearSupabaseConfig(){if(!confirm('Disconnect Supabase? Tasks will still be saved locally.'))return;localStorage.removeItem(SB_URL_KEY);localStorage.removeItem(SB_KEY_KEY);populateSettings();toast('Disconnected');renderDashboard();}
 async function testConnection(){var st=document.getElementById('conn-status');st.textContent='Testing\u2026';st.style.color='var(--text2)';try{await sbFetch('tasks?limit=1');st.textContent='\u25cf Connected successfully';st.style.color='var(--forest-lt)';toast('Connection successful \u2713');}catch(e){st.textContent='\u2715 Connection failed \u2014 check your URL and key';st.style.color='var(--red-text)';}}
-function exportCSV(){var rows=[['Task','Category','Group','Completed on','Was due','Outcome','Notes']];history.forEach(function(h){rows.push([h.name,h.cat,h.group||'',h.completedOn,h.wasDue,h.outcome||'',h.completionNotes||'']);});var csv=rows.map(function(r){return r.map(function(c){return'"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='campcare-compliance-'+todayStr()+'.csv';a.click();}
-function exportPDF(){if(!window.jspdf){alert('PDF library loading, please try again.');return;}var doc=new window.jspdf.jsPDF();doc.setFillColor(44,74,46);doc.rect(0,0,210,22,'F');doc.setTextColor(247,243,236);doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Camp Care \u2014 Hanmer Springs Forest Camp',14,14);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(100);doc.text('Compliance & Maintenance Report \u00b7 '+new Date().toLocaleDateString('en-NZ',{day:'numeric',month:'long',year:'numeric'}),14,30);doc.setTextColor(0);doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('Completion history',14,42);var hr=history.map(function(h){return[h.name,h.group||h.cat,fmtDate(h.completedOn),fmtDate(h.wasDue),h.outcome||'Pass',h.completionNotes||''];});doc.autoTable({startY:47,head:[['Task','Group','Completed','Was due','Outcome','Notes']],body:hr.length?hr:[['No completed tasks yet','','','','','']],styles:{fontSize:8,cellPadding:3},headStyles:{fillColor:[44,74,46],textColor:255,fontStyle:'bold'},alternateRowStyles:{fillColor:[239,233,223]}});var y2=doc.lastAutoTable.finalY+12;doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('Current task schedule',14,y2);var tr=tasks.slice().sort(function(a,b){return daysDiff(a.due)-daysDiff(b.due);}).map(function(t){return[t.name,t.group||t.cat,fmtDate(t.due),freqLabel(t.freq),statusRaw(statusOf(t)),t.notes||''];});doc.autoTable({startY:y2+5,head:[['Task','Group','Next due','Frequency','Status','Notes']],body:tr,styles:{fontSize:8,cellPadding:3},headStyles:{fillColor:[61,107,64],textColor:255,fontStyle:'bold'},alternateRowStyles:{fillColor:[239,233,223]}});doc.save('campcare-report-'+todayStr()+'.pdf');}
+function exportCSV(){var rows=[['Task','Category','Group','Completed on','Was due','Outcome','Notes']];taskHistory.forEach(function(h){rows.push([h.name,h.cat,h.group||'',h.completedOn,h.wasDue,h.outcome||'',h.completionNotes||'']);});var csv=rows.map(function(r){return r.map(function(c){return'"'+String(c).replace(/"/g,'""')+'"';}).join(',');}).join('\n');var a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='campcare-compliance-'+todayStr()+'.csv';a.click();}
+function exportPDF(){if(!window.jspdf){alert('PDF library loading, please try again.');return;}var doc=new window.jspdf.jsPDF();doc.setFillColor(44,74,46);doc.rect(0,0,210,22,'F');doc.setTextColor(247,243,236);doc.setFont('helvetica','bold');doc.setFontSize(16);doc.text('Camp Care \u2014 Hanmer Springs Forest Camp',14,14);doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(100);doc.text('Compliance & Maintenance Report \u00b7 '+new Date().toLocaleDateString('en-NZ',{day:'numeric',month:'long',year:'numeric'}),14,30);doc.setTextColor(0);doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('Completion history',14,42);var hr=taskHistory.map(function(h){return[h.name,h.group||h.cat,fmtDate(h.completedOn),fmtDate(h.wasDue),h.outcome||'Pass',h.completionNotes||''];});doc.autoTable({startY:47,head:[['Task','Group','Completed','Was due','Outcome','Notes']],body:hr.length?hr:[['No completed tasks yet','','','','','']],styles:{fontSize:8,cellPadding:3},headStyles:{fillColor:[44,74,46],textColor:255,fontStyle:'bold'},alternateRowStyles:{fillColor:[239,233,223]}});var y2=doc.lastAutoTable.finalY+12;doc.setFont('helvetica','bold');doc.setFontSize(13);doc.text('Current task schedule',14,y2);var tr=tasks.slice().sort(function(a,b){return daysDiff(a.due)-daysDiff(b.due);}).map(function(t){return[t.name,t.group||t.cat,fmtDate(t.due),freqLabel(t.freq),statusRaw(statusOf(t)),t.notes||''];});doc.autoTable({startY:y2+5,head:[['Task','Group','Next due','Frequency','Status','Notes']],body:tr,styles:{fontSize:8,cellPadding:3},headStyles:{fillColor:[61,107,64],textColor:255,fontStyle:'bold'},alternateRowStyles:{fillColor:[239,233,223]}});doc.save('campcare-report-'+todayStr()+'.pdf');}
 document.getElementById('n-due').value=todayStr();
 loadAll();
 </script>
